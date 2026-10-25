@@ -14,17 +14,26 @@ aws-learn/
 │       ├── security_groups.tf  # ALB / app / db の SG
 │       ├── iam.tf          # EC2 用ロール（SSM Session Manager）
 │       └── budget.tf       # 予算アラート
+│   └── app/                # 都度作成（料金がかかるもの）。app ワークフローで起動・削除
+│       ├── nat.tf          # NAT Gateway、app ルートテーブルへの経路
+│       ├── alb.tf          # ALB、パスベースルーティング（/ → nginx、/whoami → whoami）
+│       ├── ec2.tf          # EC2 × 2（AZ ごと、SSM 接続、IMDSv2）
+│       └── user_data.sh    # nginx と traefik/whoami（Docker）の初期設定
 ├── scripts/
 │   └── check_aws_strings.py  # resource 内の日本語チェック
 └── .github/workflows/
     ├── verify.yml          # fmt / 日本語チェック / validate / OIDC 確認
-    └── base.yml            # envs/base の plan（push 時）と apply（手動実行時）
+    ├── base.yml            # envs/base の plan（push 時）と apply（手動実行時）
+    └── app.yml             # envs/app の起動（土 13:03）・削除（土 18:03、毎日 21:17）・手動実行
 ```
 
-今後追加する予定のもの：
+## 運用
 
-- `envs/app/` … 都度作成（ALB、EC2×2、NAT Gateway）
-- apply / destroy の手動実行と毎晩の自動 destroy のワークフロー
+- 定期：土曜 13:03 JST に起動、18:03 JST に削除。消し忘れ防止に毎日 21:17 JST にも削除
+- 臨時：Actions > app > Run workflow で apply / destroy
+- 定期起動を休む：リポジトリの変数 `APP_SCHEDULE` を `off`（削除は止まらない）
+- 時間の変更：`app.yml` の cron と START_CRON / STOP_CRON を書き換える（ファイル先頭に JST と UTC の対応表あり）
+- 費用の目安：起動中 1 時間あたり約 0.13 USD（NAT Gateway 約 0.067、ALB 約 0.034、EC2 t3.micro × 2 約 0.027）
 
 ## ネットワーク設計
 

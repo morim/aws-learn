@@ -1,0 +1,130 @@
+name: app
+
+# 都度作成する部分（ALB、EC2×2、NAT Gateway）の起動・削除
+#
+# ■ 定期実行（cron は UTC で書く。日本時間 = UTC + 9 時間）
+#   土 13:03 JST 起動   → "3 4 * * 6"   （土 04:03 UTC）
+#   土 18:03 JST 削除   → "3 9 * * 6"   （土 09:03 UTC）
+#   毎日 21:17 JST 削除 → "17 12 * * *" （12:17 UTC。消し忘れ防止）
+#   分を 00 からずらしているのは、GitHub の定期実行が毎時 00 分に集中して遅れやすいため
+#
+# ■ 時間を変えるとき
+#   下の schedule の cron と、「Decide action」の START_CRON / STOP_CRON の 2 か所を同じ値に書き換える
+#   曜日: 0=日 1=月 2=火 3=水 4=木 5=金 6=土（"6,0" で土日両方）
+#   例) 日 10:00〜15:00 JST → 起動 "3 1 * * 0"、削除 "3 6 * * 0"
+#
+# ■ その他
+#   - 日曜など臨時に使う: Actions > app > Run workflow で action=apply（削除は destroy か、21:17 の自動削除）
+#   - 今週の定期起動を休む: リポジトリの変数 APP_SCHEDULE を off にする（毎晩の自動削除は止まらない）
+#   - 定期実行が失敗すると、GitHub からメールが届く
+
+on:
+  schedule:
+    - cron: "3 4 * * 6"
+    - cron: "3 9 * * 6"
+    - cron: "17 12 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "apply: 起動 / destroy: 削除 / plan: 確認のみ"
+        type: choice
+        options: [apply, destroy, plan]
+        default: apply
+
+permissions:
+  contents: read
+
+# 起動と削除が同時に走らないよう 1 本ずつ実行する
+concurrency:
+  group: terraform-app
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.17.0
+  AWS_REGION: ap-northeast-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: envs/app
+    steps:
+      - name: Decide action
+        id: decide
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_ACTION: ${{ inputs.action }}
+          APP_SCHEDULE: ${{ vars.APP_SCHEDULE }}
+          START_CRON: "3 4 * * 6"
+          STOP_CRON: "3 9 * * 6"
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            action="$INPUT_ACTION"
+          elif [ "$SCHEDULE" = "$START_CRON" ]; then
+            if [ "$APP_SCHEDULE" = "off" ]; then
+              action="skip"
+            else
+              action="apply"
+            fi
+          else
+            # STOP_CRON と毎晩の削除は、APP_SCHEDULE に関係なく必ず削除する
+            action="destroy"
+          fi
+          echo "action=${action}" >> "$GITHUB_OUTPUT"
+          echo "### action: ${action} (${EVENT} ${SCHEDULE})" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v6
+        if: steps.decide.outputs.action != 'skip'
+
+      - name: Non-ASCII check
+        if: steps.decide.outputs.action != 'skip'
+        working-directory: .
+        run: python3 scripts/check_aws_strings.py envs/app
+
+      - uses: hashicorp/setup-terraform@v4
+        if: steps.decide.outputs.action != 'skip'
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        if: steps.decide.outputs.action != 'skip'
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        if: steps.decide.outputs.action != 'skip'
+        run: terraform init -input=false
+
+      - name: terraform plan
+        if: steps.decide.outputs.action == 'plan'
+        run: terraform plan -input=false
+
+      - name: terraform apply
+        if: steps.decide.outputs.action == 'apply'
+        run: terraform apply -input=false -auto-approve
+
+      - name: Show URLs
+        if: steps.decide.outputs.action == 'apply'
+        run: |
+          {
+            echo "## 起動しました"
+            echo ""
+            echo "- nginx: $(terraform output -raw nginx_url)"
+            echo "- whoami: $(terraform output -raw whoami_url)"
+            echo ""
+            echo "EC2 の初期設定に 2〜3 分かかります。502 が出たら少し待って再読み込みしてください。"
+            echo "削除は土曜 18:03、または毎日 21:17 に自動で行われます。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: terraform destroy
+        if: steps.decide.outputs.action == 'destroy'
+        run: terraform destroy -input=false -auto-approve
