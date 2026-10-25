@@ -6,21 +6,35 @@ Terraform + GitHub Actions の練習用 AWS 環境。
 
 ```
 aws-learn/
-├── bootstrap/          # 最初に1回だけ CloudShell から apply する土台
-│   ├── versions.tf     # Terraform / AWS プロバイダーのバージョン
-│   ├── variables.tf
-│   ├── main.tf         # state 用 S3、GitHub OIDC、GitHub Actions 用 IAM ロール
-│   ├── outputs.tf
-│   ├── terraform.tfvars.example
-│   └── backend.tf.example  # state を S3 に移すときに backend.tf にリネーム
-└── .gitignore
+├── bootstrap/              # 最初に1回だけ CloudShell から apply する土台（GitHub Actions からは変更不可）
+│   └── main.tf             # state 用 S3、GitHub OIDC、GitHub Actions 用 IAM ロール
+├── envs/
+│   └── base/               # 常設（料金がかからないもの）。GitHub Actions の base ワークフローで apply
+│       ├── network.tf      # VPC、サブネット（public / app / db × 2AZ）、IGW、ルートテーブル、S3 ゲートウェイ EP
+│       ├── security_groups.tf  # ALB / app / db の SG
+│       ├── iam.tf          # EC2 用ロール（SSM Session Manager）
+│       └── budget.tf       # 予算アラート
+├── scripts/
+│   └── check_aws_strings.py  # resource 内の日本語チェック
+└── .github/workflows/
+    ├── verify.yml          # fmt / 日本語チェック / validate / OIDC 確認
+    └── base.yml            # envs/base の plan（push 時）と apply（手動実行時）
 ```
 
 今後追加する予定のもの：
 
-- `envs/base/` … 常設（VPC、サブネット、SG、S3 ゲートウェイエンドポイント、予算アラート）
 - `envs/app/` … 都度作成（ALB、EC2×2、NAT Gateway）
-- `.github/workflows/` … apply / destroy の手動実行と毎晩の自動 destroy
+- apply / destroy の手動実行と毎晩の自動 destroy のワークフロー
+
+## ネットワーク設計
+
+| 用途 | AZ a | AZ c | 外への経路 |
+| --- | --- | --- | --- |
+| public（ALB、NAT） | 10.10.0.0/24 | 10.10.1.0/24 | Internet Gateway |
+| app（EC2） | 10.10.10.0/24 | 10.10.11.0/24 | NAT Gateway（envs/app が経路を追加）、S3 はゲートウェイ EP |
+| db（Aurora 用に予約） | 10.10.20.0/24 | 10.10.21.0/24 | なし（S3 はゲートウェイ EP） |
+
+通信の許可：インターネット →(80) ALB →(80, 8080) EC2 →(3306) DB
 
 ## bootstrap の設計メモ
 

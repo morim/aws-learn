@@ -31,6 +31,16 @@ jobs:
       - name: Non-ASCII check in resource/data blocks
         run: python3 scripts/check_aws_strings.py .
 
+      # backend に接続せずに構文と型だけを確認する（AWS の認証は不要）
+      - name: terraform validate (all stacks)
+        run: |
+          for dir in bootstrap envs/*/; do
+            echo "::group::validate ${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false
+            terraform -chdir="${dir}" validate
+            echo "::endgroup::"
+          done
+
   # 2. OIDC で AWS に入れるかの確認（main からの実行のみ。PR ではロールを引き受けられない）
   aws-auth:
     needs: static-check

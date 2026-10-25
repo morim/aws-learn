@@ -1,0 +1,89 @@
+name: base
+
+# 常設部分（VPC など）を管理する。
+# - envs/base を変更して main に push すると plan だけ実行（結果はジョブの Summary に出る）
+# - 実際に反映するのは、Actions 画面から手動実行で action=apply を選んだときだけ
+on:
+  push:
+    branches: [main]
+    paths:
+      - "envs/base/**"
+      - ".github/workflows/base.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "plan: 確認のみ / apply: 反映する"
+        type: choice
+        options: [plan, apply]
+        default: plan
+
+permissions:
+  contents: read
+
+# 同じ state を同時に触らないよう、base の実行は 1 本ずつ
+concurrency:
+  group: terraform-base
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.17.0
+  AWS_REGION: ap-northeast-1
+  TF_IN_AUTOMATION: "true"
+  TF_VAR_budget_email: ${{ vars.BUDGET_EMAIL }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: envs/base
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Non-ASCII check
+        working-directory: .
+        run: python3 scripts/check_aws_strings.py envs/base
+
+      - name: BUDGET_EMAIL is set
+        run: |
+          if [ -z "$TF_VAR_budget_email" ]; then
+            echo "::error::GitHub の変数 BUDGET_EMAIL が未設定です（Settings > Secrets and variables > Actions > Variables）"
+            exit 1
+          fi
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform fmt / validate
+        run: |
+          terraform fmt -check -diff
+          terraform validate
+
+      - name: terraform plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Write plan to job summary
+        run: |
+          {
+            echo "## terraform plan (envs/base)"
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: terraform apply
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        run: terraform apply -input=false tfplan
