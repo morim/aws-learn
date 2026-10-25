@@ -4,6 +4,11 @@ locals {
   account_id   = data.aws_caller_identity.current.account_id
   state_bucket = "${var.project}-tfstate-${local.account_id}"
   github_repo  = "${var.github_owner}/${var.github_repo}"
+
+  # 2026-07-15 以降に作られたリポジトリの OIDC sub は、名前の後ろに数値 ID が付く形式
+  # 例: repo:octocat@123456/my-repo@456789:ref:refs/heads/main
+  # ID は名前を変えても変わらないため、名前の使い回しによるなりすましを防げる
+  oidc_subject = "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:ref:refs/heads/${var.github_branch}"
 }
 
 # =============================================================
@@ -147,7 +152,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.github_repo}:ref:refs/heads/${var.github_branch}"]
+      values   = [local.oidc_subject]
     }
   }
 }

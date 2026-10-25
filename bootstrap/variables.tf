@@ -25,6 +25,16 @@ variable "github_repo" {
   type        = string
 }
 
+variable "github_owner_id" {
+  description = "GitHub ユーザーの数値 ID（noreply メールアドレスの + の前の数字）"
+  type        = string
+}
+
+variable "github_repo_id" {
+  description = "リポジトリの数値 ID（CloudTrail の AssumeRoleWithWebIdentity の userName で確認できる）"
+  type        = string
+}
+
 variable "github_branch" {
   description = "AWS へのデプロイを許可するブランチ"
   type        = string

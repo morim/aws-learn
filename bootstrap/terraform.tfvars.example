@@ -1,7 +1,9 @@
-# cp terraform.tfvars.example terraform.tfvars でコピーしてから値を書き換える
+# cp terraform.tfvars.example terraform.tfvars でコピーして使う
 
-github_owner = "morim"
-github_repo  = "aws-learn"
+github_owner    = "morim"
+github_owner_id = "3649123"
+github_repo     = "aws-learn"
+github_repo_id  = "1432759626"
 
 # 以下は既定値のままでよい
 # project       = "aws-learn"

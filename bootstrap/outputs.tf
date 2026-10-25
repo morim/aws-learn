@@ -10,5 +10,5 @@ output "github_actions_role_arn" {
 
 output "allowed_oidc_subject" {
   description = "このロールを引き受けられる GitHub Actions の実行元"
-  value       = "repo:${local.github_repo}:ref:refs/heads/${var.github_branch}"
+  value       = local.oidc_subject
 }

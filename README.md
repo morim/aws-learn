@@ -27,7 +27,7 @@ aws-learn/
 - state 用 S3：バージョニング・暗号化・パブリックアクセスブロック・HTTPS 強制。`prevent_destroy` で誤削除を防止
 - ロック：S3 ネイティブロック（`use_lockfile = true`）。DynamoDB テーブルは作らない
 - GitHub Actions 用ロール
-  - 信頼ポリシーで「このリポジトリの main ブランチ」からの実行だけを許可
+  - 信頼ポリシーで「このリポジトリの main ブランチ」からの実行だけを許可。OIDC の sub は 2026-07-15 以降の新形式（`repo:オーナー@ID/リポジトリ@ID:...`）に合わせ、数値 ID まで一致させている
   - 権限は `PowerUserAccess`（IAM 以外ほぼ全部）＋「`aws-learn-` で始まるロール・インスタンスプロファイルだけ」を作れるインラインポリシー
   - ロール自身の名前は `github-actions-aws-learn` とし、上の接頭辞に当てはまらないため自分の権限を書き換えられない
 
