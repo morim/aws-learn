@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+tfplan
+
+# 値を入れた tfvars は各自の環境用。サンプル（*.example）だけをコミットする
+*.tfvars
+!*.tfvars.example
+
+# OS
+.DS_Store
+Thumbs.db

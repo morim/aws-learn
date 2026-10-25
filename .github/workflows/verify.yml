@@ -1,0 +1,54 @@
+name: verify
+
+# main への push、PR、手動実行で動く
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: 1.17.0
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  # 1. AWS に触らないチェック（PR でも実行）
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: Non-ASCII check in resource/data blocks
+        run: python3 scripts/check_aws_strings.py .
+
+  # 2. OIDC で AWS に入れるかの確認（main からの実行のみ。PR ではロールを引き受けられない）
+  aws-auth:
+    needs: static-check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC トークンの発行に必要
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Who am I
+        run: aws sts get-caller-identity
+
+      - name: Can read the state bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          aws s3 ls "s3://aws-learn-tfstate-${ACCOUNT_ID}/bootstrap/"

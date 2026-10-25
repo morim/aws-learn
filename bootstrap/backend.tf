@@ -1,0 +1,14 @@
+# 初回 apply（ローカル state）が終わったら、このファイルを backend.tf にリネームし、
+# bucket を terraform output state_bucket_name の値に書き換えてから
+#   terraform init -migrate-state
+# を実行すると、state が S3 に移る。
+
+terraform {
+  backend "s3" {
+    bucket       = "aws-learn-tfstate-334744076111"
+    key          = "bootstrap/terraform.tfstate"
+    region       = "ap-northeast-1"
+    encrypt      = true
+    use_lockfile = true # S3 ネイティブロック（DynamoDB 不要）
+  }
+}
